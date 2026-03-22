@@ -65,8 +65,18 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Initialize Gemini safely
+let ai: GoogleGenAI | null = null;
+try {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey && apiKey !== 'undefined') {
+    ai = new GoogleGenAI({ apiKey });
+  } else {
+    console.warn("GEMINI_API_KEY is missing. AI features will be disabled.");
+  }
+} catch (e) {
+  console.error("Failed to initialize Gemini API:", e);
+}
 
 const familyMembers = ['Papa', 'Mama', 'Melissa', 'Felix'];
 const defaultCategories = ["Allgemein", "Technik", "Kleidung", "Dokumente", "Hygiene", "Action-Gear"];
@@ -374,6 +384,13 @@ const App = () => {
   const fetchGeminiResponse = async (prompt: string) => {
     setAiLoading(true);
     setAiError(null);
+    
+    if (!ai) {
+      setAiError("Gemini API Key fehlt in den Netlify Environment Variables.");
+      setAiLoading(false);
+      return null;
+    }
+
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
