@@ -1,0 +1,5 @@
+{
+  "name": "Roadtrip 2026 Planner",
+  "description": "A comprehensive roadtrip planner for France with Firebase Auth, Firestore data persistence, and AI-powered image generation.",
+  "requestFramePermissions": []
+}

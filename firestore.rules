@@ -1,0 +1,121 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string (optional)
+    //   - photoURL: string (optional)
+    //   - role: string (required, 'user' or 'admin')
+    //
+    // Collection: trips
+    // Document ID: {tripId}
+    // Fields:
+    //   - ownerId: string (required)
+    //   - accommodations: string (optional, JSON)
+    //   - flights: string (optional, JSON)
+    //   - familyPacking: string (optional, JSON)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+
+    function ownerIdUnchanged() {
+      return !('ownerId' in request.resource.data) || request.resource.data.ownerId == request.auth.uid;
+    }
+
+    function ownerIdNotModified() {
+      return !('ownerId' in request.resource.data) || request.resource.data.ownerId == resource.data.ownerId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "michael.molzar@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role']) &&
+             data.uid is string &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
+             data.role in ['user', 'admin'];
+    }
+
+    function isValidTripData(data) {
+      return hasOnlyAllowedFields(['ownerId', 'accommodations', 'flights', 'familyPacking']) &&
+             data.ownerId is string &&
+             (!('accommodations' in data) || (data.accommodations is string && data.accommodations.size() < 100000)) &&
+             (!('flights' in data) || (data.flights is string && data.flights.size() < 100000)) &&
+             (!('familyPacking' in data) || (data.familyPacking is string && data.familyPacking.size() < 100000));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && 
+                       isValidUser(request.resource.data) && 
+                       uidUnchanged() && 
+                       ((isOwner(userId) && request.resource.data.role == 'user') || isAdmin());
+      allow update: if isAuthenticated() && 
+                       isValidUser(request.resource.data) && 
+                       uidNotModified() && 
+                       ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin());
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /trips/{tripId} {
+      allow read, write: if tripId == 'shared_trip';
+    }
+  }
+}

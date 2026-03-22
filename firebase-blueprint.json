@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "TripData": {
+      "title": "TripData",
+      "description": "The user's trip data including accommodations, flights, and packing list",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "accommodations": {
+          "type": "string",
+          "description": "JSON stringified accommodations array"
+        },
+        "flights": {
+          "type": "string",
+          "description": "JSON stringified flights array"
+        },
+        "familyPacking": {
+          "type": "string",
+          "description": "JSON stringified family packing object"
+        }
+      },
+      "required": ["ownerId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/trips/{tripId}": {
+      "schema": { "$ref": "#/entities/TripData" },
+      "description": "User trip data"
+    }
+  }
+}
