@@ -335,6 +335,7 @@ const App = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showBriefingModal, setShowBriefingModal] = useState(false);
 
   useEffect(() => {
     const tripRef = doc(db, 'trips', 'shared_trip');
@@ -628,6 +629,13 @@ const App = () => {
                     <span className="uppercase">{currentAcc.name}</span>
                   </div>
                 )}
+                <button 
+                  onClick={() => setShowBriefingModal(true)}
+                  className="flex items-center gap-2 bg-[#DB0A40] text-white px-5 py-3 font-black text-sm shadow-[4px_4px_0px_0px_#00162B] hover:translate-y-1 hover:shadow-none transition-all"
+                >
+                  <BookOpen size={20} />
+                  TAGES-BRIEFING
+                </button>
               </div>
 
               <div className="grid md:grid-cols-2 gap-10 mb-12">
@@ -898,6 +906,62 @@ const App = () => {
               >
                 <Save size={24} /> Mission Speichern
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* BRIEFING MODAL */}
+        {showBriefingModal && (
+          <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-white border-8 border-[#00162B] p-6 md:p-10 max-w-2xl w-full shadow-[16px_16px_0px_0px_#DB0A40] animate-in zoom-in-95 duration-200 my-8 relative">
+              <button 
+                onClick={() => setShowBriefingModal(false)}
+                className="absolute top-4 right-4 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition-colors"
+              >
+                <Trash2 size={24} className="text-[#00162B] hidden" /> {/* Hidden icon just for sizing if needed, but let's use a clear X or just text */}
+                <span className="font-black text-[#00162B] px-2">X</span>
+              </button>
+              
+              <div className="flex items-center gap-2 text-[#DB0A40] mb-2 font-black uppercase tracking-widest text-sm">
+                <MapPin size={16} /> {currentDay.location}
+              </div>
+              <h3 className="text-4xl font-black uppercase italic text-[#00162B] mb-2">Tag {currentDay.day}: {currentDay.title}</h3>
+              <p className="text-lg font-medium text-gray-600 mb-8 border-l-4 border-[#DB0A40] pl-4">{currentDay.description}</p>
+              
+              <div className="space-y-6 mb-8">
+                {currentDay.details.map((detail, i) => (
+                  <div key={i} className="flex gap-4 items-start">
+                    <div className="text-3xl bg-gray-100 p-3 rounded-full border-2 border-[#00162B]">{detail.type}</div>
+                    <div>
+                      <h4 className="font-black text-lg uppercase text-[#00162B] mb-1">{detail.text}</h4>
+                      <p className="text-gray-700 leading-relaxed">{detail.info}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {currentDay.researchTips && currentDay.researchTips.length > 0 && (
+                <div className="bg-[#00162B] text-white p-6 mt-8">
+                  <h4 className="font-black uppercase text-[#DB0A40] mb-4 flex items-center gap-2">
+                    <Info size={20} />
+                    Wichtige Hinweise
+                  </h4>
+                  <ul className="list-disc pl-5 space-y-2 font-medium">
+                    {currentDay.researchTips.map((tip, i) => (
+                      <li key={i}>{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="mt-8 flex justify-end">
+                <button 
+                  onClick={() => setShowBriefingModal(false)}
+                  className="px-8 py-4 font-black uppercase text-sm bg-[#DB0A40] text-white hover:bg-[#00162B] transition-colors shadow-[4px_4px_0px_0px_#00162B]"
+                >
+                  Briefing schließen
+                </button>
+              </div>
             </div>
           </div>
         )}
