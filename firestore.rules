@@ -115,7 +115,10 @@ service cloud.firestore {
     }
 
     match /trips/{tripId} {
-      allow read, write: if tripId == 'shared_trip';
+      allow read: if isAuthenticated() && tripId == 'shared_trip';
+      allow create: if isAuthenticated() && tripId == 'shared_trip' && isValidTripData(request.resource.data);
+      allow update: if isAuthenticated() && tripId == 'shared_trip' && isValidTripData(request.resource.data);
+      allow delete: if isAdmin();
     }
   }
 }
