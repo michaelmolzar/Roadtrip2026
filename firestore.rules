@@ -90,11 +90,12 @@ service cloud.firestore {
     }
 
     function isValidTripData(data) {
-      return hasOnlyAllowedFields(['ownerId', 'accommodations', 'flights', 'familyPacking']) &&
+      return hasOnlyAllowedFields(['ownerId', 'accommodations', 'flights', 'familyPacking', 'snapshots']) &&
              data.ownerId is string &&
              (!('accommodations' in data) || (data.accommodations is string && data.accommodations.size() < 100000)) &&
              (!('flights' in data) || (data.flights is string && data.flights.size() < 100000)) &&
-             (!('familyPacking' in data) || (data.familyPacking is string && data.familyPacking.size() < 100000));
+             (!('familyPacking' in data) || (data.familyPacking is string && data.familyPacking.size() < 100000)) &&
+             (!('snapshots' in data) || (data.snapshots is string && data.snapshots.size() < 500000));
     }
 
     // ===============================================================

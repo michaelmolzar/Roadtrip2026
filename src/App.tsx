@@ -62,7 +62,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  // Wir werfen keinen Error mehr, da dies beim Logout (onSnapshot permission denied)
+  // zum kompletten Absturz der App führt.
 }
 
 // Initialize Gemini safely
@@ -336,8 +337,75 @@ const App = () => {
   const [aiError, setAiError] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showBriefingModal, setShowBriefingModal] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  
+  const [snapshots, setSnapshots] = useState<Record<number, string>>({});
+  const [generatingSnapshot, setGeneratingSnapshot] = useState<number | null>(null);
+
+  const generateSnapshot = async (day: number, location: string) => {
+    setGeneratingSnapshot(day);
+    setAiError(null);
+    try {
+      if (!ai) throw new Error("Gemini API Key fehlt.");
+      
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite-image',
+        contents: {
+          parts: [{ text: `A beautiful, highly detailed, photorealistic travel photography snapshot of ${location}, France, summer vacation vibe, sunny day, vibrant colors.` }]
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: "4:3"
+          }
+        }
+      });
+      
+      let imageUrl = "";
+      if (response.candidates && response.candidates[0].content.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            const base64EncodeString = part.inlineData.data;
+            imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${base64EncodeString}`;
+            break;
+          }
+        }
+      }
+      
+      if (imageUrl) {
+        setSnapshots(prev => ({ ...prev, [day]: imageUrl }));
+        
+        // Save to Firestore automatically when a new image is generated
+        try {
+          const tripRef = doc(db, 'trips', 'shared_trip');
+          await setDoc(tripRef, {
+            snapshots: JSON.stringify({ ...snapshots, [day]: imageUrl })
+          }, { merge: true });
+        } catch (error) {
+          console.error("Fehler beim Speichern des Snapshots in Firestore:", error);
+        }
+      } else {
+         throw new Error("Kein Bild generiert.");
+      }
+    } catch (err) {
+      console.error(err);
+      setAiError(`Fehler beim Generieren des Bildes für Tag ${day}`);
+    } finally {
+      setGeneratingSnapshot(null);
+    }
+  };
 
   useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    
     const tripRef = doc(db, 'trips', 'shared_trip');
     const unsubscribe = onSnapshot(tripRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -345,13 +413,31 @@ const App = () => {
         if (data.accommodations) setAccommodations(JSON.parse(data.accommodations));
         if (data.flights) setFlights(JSON.parse(data.flights));
         if (data.familyPacking) setFamilyPacking(JSON.parse(data.familyPacking));
+        if (data.snapshots) setSnapshots(JSON.parse(data.snapshots));
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `trips/shared_trip`);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user]);
+
+  const login = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
 
   const saveToFirebase = async () => {
     try {
@@ -360,7 +446,8 @@ const App = () => {
         ownerId: 'shared_trip',
         accommodations: JSON.stringify(accommodations),
         flights: JSON.stringify(flights),
-        familyPacking: JSON.stringify(familyPacking)
+        familyPacking: JSON.stringify(familyPacking),
+        snapshots: JSON.stringify(snapshots)
       }, { merge: true });
       setShowSaveModal(false);
       // Optional: Add a toast notification here instead of alert if desired
@@ -548,6 +635,36 @@ const App = () => {
     setAiFood(null);
   }, [activeDay]);
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center font-sans text-[#00162B]">
+        <Loader2 className="animate-spin text-[#DB0A40] mb-4" size={48} />
+        <p className="font-black uppercase tracking-widest text-sm">System wird geladen...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center font-sans text-[#00162B] p-4">
+        <div className="bg-white border-8 border-[#00162B] p-8 md:p-12 max-w-md w-full shadow-[16px_16px_0px_0px_#DB0A40] animate-in zoom-in-95 duration-200 text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#DB0A40] rotate-45 translate-x-16 -translate-y-16"></div>
+          <Car size={64} className="mx-auto mb-6 text-[#00162B]" />
+          <h1 className="text-4xl font-black uppercase tracking-tighter italic mb-2">Roadtrip 2026</h1>
+          <p className="text-gray-600 font-medium mb-8">
+            Autorisierung erforderlich. Bitte logge dich ein, um den Reiseplan der Familie zu laden.
+          </p>
+          <button 
+            onClick={login}
+            className="w-full px-6 py-4 font-black uppercase text-lg bg-[#DB0A40] text-white hover:bg-[#00162B] transition-colors shadow-[4px_4px_0px_0px_#00162B] flex items-center justify-center gap-3 group"
+          >
+            <User className="group-hover:scale-110 transition-transform" /> Login mit Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] font-sans text-[#00162B] pb-24">
       {/* HEADER */}
@@ -557,10 +674,11 @@ const App = () => {
             <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter italic">Roadtrip 2026</h1>
             <p className="text-[10px] font-bold text-[#DB0A40] tracking-widest uppercase">Frankreich • 16 Tage</p>
           </div>
-          <nav className="flex gap-2">
+          <nav className="flex gap-2 items-center">
             {[
               { id: 'plan', icon: Calendar },
               { id: 'map', icon: MapIcon },
+              { id: 'gallery', icon: ImageIcon },
               { id: 'accommodations', icon: Bed },
               { id: 'packing', icon: Briefcase },
               { id: 'admin', icon: Settings }
@@ -573,6 +691,14 @@ const App = () => {
                 <nav.icon size={20} />
               </button>
             ))}
+            <div className="w-px h-6 bg-white/20 mx-1"></div>
+            <button 
+              onClick={logout} 
+              title="Logout"
+              className="p-2 rounded-none transition-all opacity-40 hover:opacity-100 hover:text-[#DB0A40]"
+            >
+              <LogOut size={20} />
+            </button>
           </nav>
         </div>
       </header>
@@ -847,6 +973,49 @@ const App = () => {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* GALLERY VIEW */}
+        {view === 'gallery' && (
+          <div className="animate-in fade-in slide-in-from-bottom-8 duration-500">
+             <div className="mb-8 bg-white border-8 border-[#00162B] p-8 shadow-[12px_12px_0px_0px_#DB0A40]">
+               <h2 className="text-3xl font-black uppercase italic mb-2">Destination Snapshots</h2>
+               <p className="text-gray-600 font-medium">Generiere mit KI einen Vorgeschmack auf eure Ziele. Wähle einen Tag aus und lass dir ein Bild eurer Destination zaubern!</p>
+               {aiError && <div className="mt-4 p-4 bg-red-100 text-red-700 font-black uppercase tracking-widest text-xs border-l-8 border-red-500">{aiError}</div>}
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+               {itinerary.map((item) => (
+                 <div key={item.day} className="bg-white border-8 border-[#00162B] flex flex-col group transition-all hover:-translate-y-2 hover:shadow-[12px_12px_0px_0px_#00162B]">
+                    <div className="relative aspect-[4/3] bg-gray-50 border-b-8 border-[#00162B] flex items-center justify-center overflow-hidden p-2">
+                       {snapshots[item.day] ? (
+                         <img src={snapshots[item.day]} alt={item.location} className="w-full h-full object-cover border-4 border-[#00162B]" referrerPolicy="no-referrer" />
+                       ) : generatingSnapshot === item.day ? (
+                         <div className="flex flex-col items-center gap-4 text-[#DB0A40]">
+                           <Loader2 className="animate-spin" size={48} />
+                           <span className="font-black uppercase tracking-widest text-xs">Generiere Snapshot...</span>
+                         </div>
+                       ) : (
+                         <div className="flex flex-col items-center gap-4 text-gray-400">
+                           <ImageIcon size={64} className="opacity-20 group-hover:scale-110 transition-transform" />
+                           <button 
+                             onClick={() => generateSnapshot(item.day, item.location)}
+                             className="bg-[#00162B] text-white px-6 py-4 font-black uppercase text-xs hover:bg-[#DB0A40] transition-colors flex items-center gap-3 shadow-[4px_4px_0px_0px_#DB0A40]"
+                           >
+                             <Camera size={18} /> KI Snapshot
+                           </button>
+                         </div>
+                       )}
+                    </div>
+                    <div className="p-6">
+                      <div className="text-[10px] font-black uppercase text-[#DB0A40] tracking-widest mb-2">Tag {item.day}</div>
+                      <h3 className="font-black uppercase text-xl leading-tight mb-2">{item.location}</h3>
+                      <p className="text-sm text-gray-600 font-medium truncate">{item.title}</p>
+                    </div>
+                 </div>
+               ))}
+             </div>
           </div>
         )}
 
